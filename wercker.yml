@@ -1,0 +1,64 @@
+#box: rails:4
+box: ruby
+services:
+  - id: mysql
+    env:
+      MYSQL_ROOT_PASSWORD: $MYSQL_ROOT_PASSWORD
+      MYSQL_DATABASE: $MYSQL_DATABASE
+      MYSQL_USER: $MYSQL_USER
+      MYSQL_PASSWORD: $MYSQL_PASSWORD
+build:
+    steps:
+        - script:
+            name: echo ruby information
+            code: |
+                echo "ruby version $(ruby --version) running"
+                echo "from location $(which ruby)"
+        # - bundle-install:
+        #     jobs: 4
+        #     binstubs: true
+        - rails-database-yml:
+            service: mysql-docker
+        - script:
+            name: echo gem information
+            code: |
+                echo -p "gem list: $(gem list)"
+        # - script:
+        #     name: ridgepole
+        #     code: bundle exec ridgepole -E test -c config/database.yml --apply -f schemas/Schemafile
+        # - script:
+        #     name: db:schema:load
+        #     code: RAILS_ENV=test bin/rake db:schema:load
+        # - script:
+        #     name: rspec
+        #     code: bundle exec rspec
+    after-steps:
+        - heathrow/chatwork-notify:
+            token: $CHATWORK_API_TOKEN 
+            room-id: "27672139"
+            passed-message: "[info][title]ビルドが成功しました :D[/title]$WERCKER_APPLICATION_OWNER_NAME/$WERCKER_APPLICATION_NAME ($WERCKER_GIT_BRANCH)\nby $WERCKER_STARTED_BY\n$WERCKER_BUILD_URL[/info]"
+            failed-message: "[info][title]ビルドが失敗しました (devil)[/title]$WERCKER_APPLICATION_OWNER_NAME/$WERCKER_APPLICATION_NAME ($WERCKER_GIT_BRANCH)\nby $WERCKER_STARTED_BY\n$WERCKER_BUILD_URL[/info]"
+deploy:
+    steps:
+        - script:
+            name: make .ssh directory
+            code: mkdir -p "$HOME/.ssh"
+        - create-file:
+            name: write ssh key
+            filename: $HOME/.ssh/comic.pem
+            overwrite: true
+            hide-from-log: true
+            content: $WERCKER_PEM_KEY 
+        - script:
+            name: set permissions for ssh key
+            code: chmod 0400 $HOME/.ssh/comic.pem
+        - script: 
+            name: execute deploy
+            code: ssh -t -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i $HOME/.ssh/comic.pem ec2-user@54.65.49.86 "ssh-agent > /tmp/ssh-agent.out; source /tmp/ssh-agent.out; ssh-add ~/.ssh/comic.pem; cd ~/tools/deploy.bastion/otacco/; cap $WERCKER_DEPLOYTARGET_NAME deploy"
+    after-steps:
+        - heathrow/chatwork-notify:
+            token: $CHATWORK_API_TOKEN 
+            room-id: "27672139"
+            passed-message: "[info][title]$WERCKER_DEPLOYTARGET_NAMEへのデプロイが成功しました :D[/title]$WERCKER_APPLICATION_OWNER_NAME/$WERCKER_APPLICATION_NAME ($WERCKER_GIT_BRANCH)\nto $WERCKER_DEPLOYTARGET_NAME\nby $WERCKER_STARTED_BY\n$WERCKER_DEPLOY_URL[/info]"
+            failed-message: "[info][title]$WERCKER_DEPLOYTARGET_NAMEへのデプロイが失敗しました (devil)[/title]$WERCKER_APPLICATION_OWNER_NAME/$WERCKER_APPLICATION_NAME ($WERCKER_GIT_BRANCH)\nto $WERCKER_DEPLOYTARGET_NAME\nby $WERCKER_STARTED_BY\n$WERCKER_DEPLOY_URL[/info]"
+            
